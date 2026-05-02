@@ -71,6 +71,15 @@ struct Argument {
 // Create wrappers for C Binding types (see CBindingWrapping.h).
 DEFINE_SIMPLE_CONVERSION_FUNCTIONS(Argument, LLVMRemarkArgRef)
 
+/// A fact providing provenance information for a remark.
+struct ProvenanceFact {
+  StringRef FactID;
+  StringRef AnalysisPass;
+  StringRef Claim;
+  SmallVector<RemarkLocation, 2> SourceLocations;
+  SmallVector<StringRef, 2> EnablingFacts;
+};
+
 /// The type of the remark.
 enum class Type {
   Unknown,
@@ -128,6 +137,9 @@ struct Remark {
 
   /// Arguments collected via the streaming interface.
   SmallVector<Argument, 5> Args;
+
+  /// Optional provenance facts associated with the remark.
+  std::optional<SmallVector<ProvenanceFact, 5>> ProvenanceFacts;
 
   Remark() = default;
   Remark(Remark &&) = default;
@@ -200,11 +212,29 @@ inline bool operator<(const Argument &LHS, const Argument &RHS) {
          std::make_tuple(RHS.Key, RHS.Val, RHS.Loc);
 }
 
+inline bool operator==(const ProvenanceFact &LHS, const ProvenanceFact &RHS) {
+  return LHS.FactID == RHS.FactID && LHS.AnalysisPass == RHS.AnalysisPass &&
+         LHS.Claim == RHS.Claim && LHS.SourceLocations == RHS.SourceLocations &&
+         LHS.EnablingFacts == RHS.EnablingFacts;
+}
+
+inline bool operator!=(const ProvenanceFact &LHS, const ProvenanceFact &RHS) {
+  return !(LHS == RHS);
+}
+
+inline bool operator<(const ProvenanceFact &LHS, const ProvenanceFact &RHS) {
+  return std::make_tuple(LHS.FactID, LHS.AnalysisPass, LHS.Claim,
+                         LHS.SourceLocations, LHS.EnablingFacts) <
+         std::make_tuple(RHS.FactID, RHS.AnalysisPass, RHS.Claim,
+                         RHS.SourceLocations, RHS.EnablingFacts);
+}
+
 inline bool operator==(const Remark &LHS, const Remark &RHS) {
   return LHS.RemarkType == RHS.RemarkType && LHS.PassName == RHS.PassName &&
          LHS.RemarkName == RHS.RemarkName &&
          LHS.FunctionName == RHS.FunctionName && LHS.Loc == RHS.Loc &&
-         LHS.Hotness == RHS.Hotness && LHS.Args == RHS.Args;
+         LHS.Hotness == RHS.Hotness && LHS.Args == RHS.Args &&
+         LHS.ProvenanceFacts == RHS.ProvenanceFacts;
 }
 
 inline bool operator!=(const Remark &LHS, const Remark &RHS) {
@@ -213,9 +243,11 @@ inline bool operator!=(const Remark &LHS, const Remark &RHS) {
 
 inline bool operator<(const Remark &LHS, const Remark &RHS) {
   return std::make_tuple(LHS.RemarkType, LHS.PassName, LHS.RemarkName,
-                         LHS.FunctionName, LHS.Loc, LHS.Hotness, LHS.Args) <
+                         LHS.FunctionName, LHS.Loc, LHS.Hotness, LHS.Args,
+                         LHS.ProvenanceFacts) <
          std::make_tuple(RHS.RemarkType, RHS.PassName, RHS.RemarkName,
-                         RHS.FunctionName, RHS.Loc, RHS.Hotness, RHS.Args);
+                         RHS.FunctionName, RHS.Loc, RHS.Hotness, RHS.Args,
+                         RHS.ProvenanceFacts);
 }
 
 inline raw_ostream &operator<<(raw_ostream &OS, const RemarkLocation &RLoc) {

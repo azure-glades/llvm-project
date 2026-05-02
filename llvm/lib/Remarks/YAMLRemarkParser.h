@@ -88,6 +88,8 @@ protected:
   Expected<RemarkLocation> parseDebugLoc(yaml::KeyValueNode &Node);
   /// Parse an argument.
   Expected<Argument> parseArg(yaml::Node &Node);
+  /// Parse a provenance fact.
+  Expected<ProvenanceFact> parseProvenanceFact(yaml::Node &Node);
 };
 
 Expected<std::unique_ptr<YAMLRemarkParser>> createYAMLParserFromMeta(

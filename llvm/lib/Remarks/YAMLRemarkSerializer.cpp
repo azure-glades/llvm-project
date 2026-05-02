@@ -57,6 +57,7 @@ template <> struct MappingTraits<remarks::Remark *> {
 
     mapRemarkHeader(io, Remark->PassName, Remark->RemarkName, Remark->Loc,
                     Remark->FunctionName, Remark->Hotness, Remark->Args);
+    io.mapOptional("ProvenanceFacts", Remark->ProvenanceFacts);
   }
 };
 
@@ -102,7 +103,7 @@ template <> struct BlockScalarTraits<StringBlockVal> {
 /// Keep this in this file so that it doesn't get misused from YAMLTraits.h.
 template <typename T> struct SequenceTraits<ArrayRef<T>> {
   static size_t size(IO &io, ArrayRef<T> &seq) { return seq.size(); }
-  static Argument &element(IO &io, ArrayRef<T> &seq, size_t index) {
+  static T &element(IO &io, ArrayRef<T> &seq, size_t index) {
     assert(io.outputting() && "input not yet implemented");
     // The assert above should make this "safer" to satisfy the YAMLTraits.
     return const_cast<T &>(seq[index]);
@@ -126,10 +127,24 @@ template <> struct MappingTraits<Argument> {
   }
 };
 
+template <> struct MappingTraits<ProvenanceFact> {
+  static void mapping(IO &io, ProvenanceFact &Fact) {
+    assert(io.outputting() && "input not yet implemented");
+
+    io.mapRequired("FactID", Fact.FactID);
+    io.mapRequired("AnalysisPass", Fact.AnalysisPass);
+    io.mapRequired("Claim", Fact.Claim);
+    io.mapOptional("SourceLocations", Fact.SourceLocations);
+    io.mapOptional("EnablingFacts", Fact.EnablingFacts);
+  }
+};
+
 } // end namespace yaml
 } // end namespace llvm
 
 LLVM_YAML_IS_SEQUENCE_VECTOR(Argument)
+LLVM_YAML_IS_SEQUENCE_VECTOR(RemarkLocation)
+LLVM_YAML_IS_SEQUENCE_VECTOR(ProvenanceFact)
 
 YAMLRemarkSerializer::YAMLRemarkSerializer(raw_ostream &OS)
     : RemarkSerializer(Format::YAML, OS),

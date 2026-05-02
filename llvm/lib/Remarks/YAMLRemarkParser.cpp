@@ -229,6 +229,19 @@ YAMLRemarkParser::parseRemark(yaml::Document &RemarkEntry) {
         else
           return MaybeArg.takeError();
       }
+    } else if (KeyName == "ProvenanceFacts") {
+      auto *Facts =
+          dyn_cast_if_present<yaml::SequenceNode>(RemarkField.getValue());
+      if (!Facts)
+        return error("wrong value type for key.", RemarkField);
+
+      TheRemark.ProvenanceFacts = SmallVector<ProvenanceFact, 5>();
+      for (yaml::Node &Fact : *Facts) {
+        if (Expected<ProvenanceFact> MaybeFact = parseProvenanceFact(Fact))
+          TheRemark.ProvenanceFacts->push_back(*MaybeFact);
+        else
+          return MaybeFact.takeError();
+      }
     } else {
       return error("unknown key.", RemarkField);
     }
@@ -390,6 +403,102 @@ Expected<Argument> YAMLRemarkParser::parseArg(yaml::Node &Node) {
   Arg.Val = *ValueStr;
   Arg.Loc = Loc;
   return Arg;
+}
+
+Expected<ProvenanceFact> YAMLRemarkParser::parseProvenanceFact(yaml::Node &Node) {
+  auto *FactMap = dyn_cast<yaml::MappingNode>(&Node);
+  if (!FactMap)
+    return error("expected a value of mapping type.", Node);
+
+  ProvenanceFact Fact;
+
+  for (yaml::KeyValueNode &FactEntry : *FactMap) {
+    Expected<StringRef> MaybeKey = parseKey(FactEntry);
+    if (!MaybeKey)
+      return MaybeKey.takeError();
+    StringRef KeyName = *MaybeKey;
+
+    if (KeyName == "FactID") {
+      if (Expected<StringRef> MaybeStr = parseStr(FactEntry))
+        Fact.FactID = *MaybeStr;
+      else
+        return MaybeStr.takeError();
+    } else if (KeyName == "AnalysisPass") {
+      if (Expected<StringRef> MaybeStr = parseStr(FactEntry))
+        Fact.AnalysisPass = *MaybeStr;
+      else
+        return MaybeStr.takeError();
+    } else if (KeyName == "Claim") {
+      if (Expected<StringRef> MaybeStr = parseStr(FactEntry))
+        Fact.Claim = *MaybeStr;
+      else
+        return MaybeStr.takeError();
+    } else if (KeyName == "SourceLocations") {
+      auto *Locs = dyn_cast_if_present<yaml::SequenceNode>(FactEntry.getValue());
+      if (!Locs)
+        return error("expected a sequence of debug locations.", FactEntry);
+      for (yaml::Node &LocNode : *Locs) {
+        auto *DebugLoc = dyn_cast<yaml::MappingNode>(&LocNode);
+        if (!DebugLoc)
+          return error("expected a value of mapping type.", LocNode);
+
+        std::optional<StringRef> File;
+        std::optional<unsigned> Line;
+        std::optional<unsigned> Column;
+
+        for (yaml::KeyValueNode &DLNode : *DebugLoc) {
+          Expected<StringRef> MaybeDLKey = parseKey(DLNode);
+          if (!MaybeDLKey)
+            return MaybeDLKey.takeError();
+          StringRef DLKeyName = *MaybeDLKey;
+
+          if (DLKeyName == "File") {
+            if (Expected<StringRef> MaybeStr = parseStr(DLNode))
+              File = *MaybeStr;
+            else
+              return MaybeStr.takeError();
+          } else if (DLKeyName == "Column") {
+            if (Expected<unsigned> MaybeU = parseUnsigned(DLNode))
+              Column = *MaybeU;
+            else
+              return MaybeU.takeError();
+          } else if (DLKeyName == "Line") {
+            if (Expected<unsigned> MaybeU = parseUnsigned(DLNode))
+              Line = *MaybeU;
+            else
+              return MaybeU.takeError();
+          } else {
+            return error("unknown entry in DebugLoc map.", DLNode);
+          }
+        }
+
+        if (!File || !Line || !Column)
+          return error("DebugLoc node incomplete.", LocNode);
+
+        Fact.SourceLocations.push_back(RemarkLocation{*File, *Line, *Column});
+      }
+    } else if (KeyName == "EnablingFacts") {
+      auto *Refs = dyn_cast_if_present<yaml::SequenceNode>(FactEntry.getValue());
+      if (!Refs)
+        return error("expected a sequence of strings.", FactEntry);
+      for (yaml::Node &RefNode : *Refs) {
+        StringRef Result;
+        if (auto *Value = dyn_cast<yaml::ScalarNode>(&RefNode))
+          Result = Value->getRawValue();
+        else if (auto *ValueBlock = dyn_cast<yaml::BlockScalarNode>(&RefNode))
+          Result = ValueBlock->getValue();
+        else
+          return error("expected a string.", RefNode);
+        Result.consume_front("\'");
+        Result.consume_back("\'");
+        Fact.EnablingFacts.push_back(Result);
+      }
+    } else {
+      return error("unknown entry in ProvenanceFact map.", FactEntry);
+    }
+  }
+
+  return Fact;
 }
 
 Expected<std::unique_ptr<Remark>> YAMLRemarkParser::next() {
